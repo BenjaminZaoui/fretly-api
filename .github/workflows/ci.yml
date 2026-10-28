@@ -53,7 +53,7 @@ jobs:
 
       - name: Pytest
         run: >
-          pytest -v
+          python -m pytest -v
           --junitxml=reports/junit.xml
           --cov=app --cov-report=term-missing --cov-report=xml:reports/coverage.xml
 
