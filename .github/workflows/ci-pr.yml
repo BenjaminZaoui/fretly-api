@@ -102,3 +102,44 @@ jobs:
           ignore-unfixed: true
           format: table
           exit-code: "1"
+
+  build-image:
+    name: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Construire l'image
+        run: docker build --build-arg GIT_COMMIT=${{ github.sha }} -t fretly-api:ci .
+
+      - name: Vérifier la taille de l'image (< 200 Mo)
+        run: |
+          size=$(docker image inspect fretly-api:ci --format '{{.Size}}')
+          echo "Taille de l'image : $((size / 1000000)) Mo"
+          test "$size" -lt 200000000
+
+      - name: Démarrer le conteneur et attendre le healthcheck
+        run: |
+          docker run -d --name fretly-ci -p 8000:8000 fretly-api:ci
+          for i in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' fretly-ci)
+            echo "Healthcheck : $status"
+            [ "$status" = "healthy" ] && exit 0
+            sleep 2
+          done
+          exit 1
+
+      - name: Vérifier /health, /version et l'utilisateur non root
+        run: |
+          curl -fsS localhost:8000/health
+          echo
+          version=$(curl -fsS localhost:8000/version)
+          echo "$version"
+          echo "$version" | grep -q '"commit":"${{ github.sha }}"'
+          test "$(docker exec fretly-ci id -u)" != "0"
+
+      - name: Logs du conteneur et arrêt
+        if: always()
+        run: |
+          docker logs fretly-ci || true
+          docker rm -f fretly-ci || true
