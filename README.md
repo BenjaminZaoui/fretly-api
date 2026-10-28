@@ -35,3 +35,8 @@ casse les tests ou introduit une faille ne peut donc jamais arriver sur `main`, 
 
 Les messages suivent **Conventional Commits** : `type(portée): description`
 (ex. `feat(api): ajouter la route /version`, `fix(deps): mettre à jour
+
+
+### rulests
+
+![alt text](image.png)

@@ -1,0 +1,47 @@
+# --- Git / CI ---
+.git
+.gitignore
+.github
+
+# --- Secrets ---
+.env
+.env.*
+.env-example
+*.pem
+*.key
+*_key
+
+# --- Tests et rapports ---
+tests/
+reports/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+requirements-dev.txt
+
+# --- Caches ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Environnements virtuels ---
+.venv/
+venv/
+
+# --- Bases locales ---
+*.db
+*.db-journal
+*.sqlite3
+
+# --- Divers inutiles à l'exécution ---
+data/
+*.md
+Dockerfile
+.dockerignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
