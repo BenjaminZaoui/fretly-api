@@ -1,0 +1,104 @@
+name: CI (Pull Request)
+
+# Vérifie le code tel qu'il sera une fois fusionné dans main
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Installer les dépendances
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff check
+        run: ruff check . --output-format=github
+
+  test:
+    name: test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Installer les dépendances
+        run: pip install -r requirements-dev.txt
+
+      - name: Pytest
+        run: >
+          pytest -v
+          --junitxml=reports/junit.xml
+          --cov=app --cov-report=term-missing --cov-report=xml:reports/coverage.xml
+
+      - name: Publier les rapports JUnit et couverture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-py${{ matrix.python-version }}
+          path: reports/
+          if-no-files-found: warn
+
+  scan-repo:
+    name: scan-repo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read # requis par upload-sarif pour lire les infos du run
+    steps:
+      - uses: actions/checkout@v5
+
+      # v0.35.0 : première version sûre après la compromission des tags (GHSA-69fq-xp46-6x23)
+      - name: Trivy - rapport SARIF (non bloquant)
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-repo.sarif
+          exit-code: "0"
+
+      - name: Publier le SARIF dans l'onglet Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-repo.sarif
+          category: trivy-repo
+
+      - name: Trivy - bloquant sur HIGH/CRITICAL corrigeables
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
