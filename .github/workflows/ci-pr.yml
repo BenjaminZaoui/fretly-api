@@ -120,7 +120,7 @@ jobs:
 
       - name: Démarrer le conteneur et attendre le healthcheck
         run: |
-          docker run -d --name fretly-ci -p 8000:8000 fretly-api:ci
+          docker run -d --name fretly-ci -p 8002:8000 fretly-api:ci
           for i in $(seq 1 30); do
             status=$(docker inspect -f '{{.State.Health.Status}}' fretly-ci)
             echo "Healthcheck : $status"
@@ -131,9 +131,9 @@ jobs:
 
       - name: Vérifier /health, /version et l'utilisateur non root
         run: |
-          curl -fsS localhost:8000/health
+          curl -fsS localhost:8002/health
           echo
-          version=$(curl -fsS localhost:8000/version)
+          version=$(curl -fsS localhost:8002/version)
           echo "$version"
           echo "$version" | grep -q '"commit":"${{ github.sha }}"'
           test "$(docker exec fretly-ci id -u)" != "0"
@@ -143,3 +143,88 @@ jobs:
         run: |
           docker logs fretly-ci || true
           docker rm -f fretly-ci || true
+
+  # Déploiement sur le serveur, uniquement si tous les contrôles sont verts.
+  # Secrets GitHub requis : SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS,
+  # API_KEY, POSTGRES_PASSWORD (SSH_PORT optionnel, 22 par défaut).
+  deploy:
+    name: deploy
+    needs: [lint, test, scan-repo, build-image]
+    runs-on: ubuntu-latest
+    # Un seul déploiement à la fois, jamais interrompu en cours de route
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_PATH: fretly-api # relatif au home de SSH_USER sur le serveur
+      COMPOSE_PROJECT: fretly-api
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configurer la connexion SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host deploy
+            HostName $SSH_HOST
+            User $SSH_USER
+            Port $SSH_PORT
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+          ssh deploy 'docker --version && docker compose version'
+
+      - name: Générer le .env de production
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          umask 077
+          cat > .env.deploy <<EOF
+          APP_ENV=production
+          API_KEY=$API_KEY
+          POSTGRES_USER=fretly
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          POSTGRES_DB=fretly
+          EOF
+
+      - name: Envoyer le code sur le serveur
+        run: |
+          # L'ancien code est effacé ; les données PostgreSQL restent dans le volume Docker
+          ssh deploy "rm -rf $DEPLOY_PATH && mkdir -p $DEPLOY_PATH"
+          git archive --format=tar HEAD | ssh deploy "tar -xf - -C $DEPLOY_PATH"
+          scp .env.deploy deploy:$DEPLOY_PATH/.env
+          ssh deploy "chmod 600 $DEPLOY_PATH/.env"
+
+      - name: Construire et remplacer le conteneur
+        env:
+          GIT_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          ssh deploy "cd $DEPLOY_PATH \
+            && docker compose -p $COMPOSE_PROJECT up -d --wait db \
+            && GIT_COMMIT=$GIT_COMMIT docker compose -p $COMPOSE_PROJECT up -d --build \
+                 --force-recreate --no-deps --wait --wait-timeout 120 api \
+            && docker image prune -f"
+
+      - name: Vérifier la version déployée
+        env:
+          GIT_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          version=$(ssh deploy "cd $DEPLOY_PATH && docker compose -p $COMPOSE_PROJECT exec -T api \
+            python -c \"import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/version').read().decode())\"")
+          echo "$version"
+          echo "$version" | grep -q "\"commit\":\"$GIT_COMMIT\""
+
+      - name: Supprimer la clé SSH et le .env du runner
+        if: always()
+        run: rm -f ~/.ssh/id_deploy .env.deploy

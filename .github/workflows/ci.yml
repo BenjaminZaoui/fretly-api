@@ -122,7 +122,7 @@ jobs:
 
       - name: Démarrer le conteneur et attendre le healthcheck
         run: |
-          docker run -d --name fretly-ci -p 8000:8000 fretly-api:ci
+          docker run -d --name fretly-ci -p 8002:8000 fretly-api:ci
           for i in $(seq 1 30); do
             status=$(docker inspect -f '{{.State.Health.Status}}' fretly-ci)
             echo "Healthcheck : $status"
@@ -133,9 +133,9 @@ jobs:
 
       - name: Vérifier /health, /version et l'utilisateur non root
         run: |
-          curl -fsS localhost:8000/health
+          curl -fsS localhost:8002/health
           echo
-          version=$(curl -fsS localhost:8000/version)
+          version=$(curl -fsS localhost:8002/version)
           echo "$version"
           echo "$version" | grep -q '"commit":"${{ github.sha }}"'
           test "$(docker exec fretly-ci id -u)" != "0"
