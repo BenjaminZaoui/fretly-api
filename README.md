@@ -137,7 +137,7 @@ leurs secrets avec `docker inspect`.
 | Run complet vert, avec déploiement | ![alt text](image-1.png) |
 | PR `demo/cve` bloquée par Trivy | *à ajouter* |
 | Protection de `main` | ![Ruleset protection-main](image.png) |
-| Paquet sur ghcr.io | *à ajouter* |
+| Paquet sur ghcr.io | ![alt text](image-3.png) |
 | API servie sur l'EC2 (`http://<ip>:8002/docs`) | ![alt text](image-2.png) |
 
 ---
