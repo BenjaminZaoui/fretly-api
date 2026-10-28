@@ -1,3 +1,4 @@
+# test
 name: CI
 
 on:
@@ -71,7 +72,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      actions: read  # requis par upload-sarif pour lire les infos du run
+      actions: read # requis par upload-sarif pour lire les infos du run
     steps:
       - uses: actions/checkout@v5
 
