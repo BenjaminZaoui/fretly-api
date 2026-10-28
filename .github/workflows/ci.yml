@@ -108,6 +108,9 @@ jobs:
   build-image:
     name: build-image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # publication sur ghcr.io
     steps:
       - uses: actions/checkout@v5
 
@@ -145,3 +148,19 @@ jobs:
         run: |
           docker logs fretly-ci || true
           docker rm -f fretly-ci || true
+
+      # Uniquement sur push : une PR venant d'un fork n'a pas le droit d'écrire les paquets
+      - name: Connexion à ghcr.io
+        if: github.event_name == 'push'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Publier l'image sur ghcr.io
+        if: github.event_name == 'push'
+        run: |
+          IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}
+          docker tag fretly-api:ci $IMAGE:sha-${GITHUB_SHA::7}
+          docker push $IMAGE:sha-${GITHUB_SHA::7}
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            docker tag fretly-api:ci $IMAGE:latest
+            docker push $IMAGE:latest
+          fi
