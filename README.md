@@ -79,6 +79,16 @@ vérifie que `/version` renvoie bien le commit de la PR.
 
 ---
 
+## 4. Limites et améliorations
+
+| Limite | Amélioration |
+|---|---|
+| Images non signées | Signer avec **Cosign** et vérifier avant déploiement |
+| Clé SSH longue durée dans GitHub | **OIDC** GitHub → AWS, identifiants temporaires |
+| Pas d'environnement de recette | Déployer d'abord en **staging**, puis en production après validation |
+| Pas de test dynamique | **DAST** (OWASP ZAP) sur l'environnement de recette |
+
+---
 
 ## 5. Questions
 
@@ -142,15 +152,3 @@ leurs secrets avec `docker inspect`.
 
 ---
 
-## 7. Limites et améliorations
-
-| Limite actuelle | Amélioration |
-|---|---|
-| L'image est publiée sur **ghcr.io** (tag `sha-…`) mais encore reconstruite **sur le serveur** à chaque déploiement | Tirer sur le serveur l'image `ghcr.io/…:sha-…` déjà construite et testée en CI, au lieu de la recompiler |
-| `trivy image` n'est lancé qu'en local | L'ajouter dans la pipeline avant publication, bloquant sur HIGH/CRITICAL corrigeables |
-| Image non signée | Signer avec **cosign** et vérifier la signature avant déploiement |
-| Clé SSH stockée dans les secrets GitHub | **OIDC** vers AWS, sans secret longue durée |
-| Déploiement direct depuis la PR, sans recette | Un **environnement de recette** (staging), puis la production après approbation manuelle |
-| Seuls des tests unitaires et d'API | Ajouter un **DAST** (OWASP ZAP) sur l'environnement de recette |
-| Pas de retour arrière automatique | Garder le tag précédent et revenir dessus si le healthcheck échoue |
-| Pas de supervision | Logs centralisés et alertes sur `/health` |
